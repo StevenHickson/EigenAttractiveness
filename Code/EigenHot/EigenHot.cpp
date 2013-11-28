@@ -80,38 +80,48 @@ inline static Mat norm_0_255(InputArray _src) {
 	return dst;
 }
 
-inline void DisplayHistogram(Mat &hist, HistInfo &histInfo, string window, string filename) {
-	//for displaying the histogram
-	double maxVal=0;
-	minMaxLoc(hist, 0, &maxVal, 0, 0);
-	Mat histImg = Mat::zeros( histInfo.s_bins*10,  histInfo.h_bins*10, CV_8UC3);
-	for( int h = 0; h < histInfo.h_bins; h++ )
-		for( int s = 0; s < histInfo.s_bins; s++ )
-		{
-			float binVal = hist.at<float>(h, s);
-			int intensity = cvRound(binVal*255/maxVal);
-			rectangle( histImg, Point(h*10, s*10),
-				Point( (h+1)*10 - 1, (s+1)*10 - 1),
-				Scalar::all(intensity),
-				CV_FILLED );
-		}
-		if(!filename.empty())
-			imwrite(filename, histImg);
-		namedWindow( window, 1 );
-		imshow( window, histImg );
-		//cvWaitKey();
+inline void CalcHist(const Mat &in, HistInfo &histInfo, Mat *hist) {
+	Mat hist_base;
+	hist_base = Mat::zeros(1,histInfo.bins,CV_64F);
+	double *data = (double *)in.data, *end = data + in.cols;
+	double mul = histInfo.bins / (histInfo.ranges[1] - histInfo.ranges[0]);
+	while(data != end) {
+		int loc = int((*data - histInfo.ranges[0]) * mul);
+		if(loc < 0)
+			loc = 0;
+		if(loc >= histInfo.bins)
+			loc = histInfo.bins - 1;
+		hist_base.at<double>(0,loc)++;
+		++data;
+	}
+	normalize( hist_base, *hist, 0, 1, NORM_MINMAX, -1, Mat() );
 }
 
-inline void ComputeHistogram(Mat &img, HistInfo &histInfo, Mat *hist) {
-	Mat hist_base;
-	calcHist( &img, 1, histInfo.channels, Mat(), hist_base, 2, histInfo.histSize, histInfo.ranges, true, false );
-	normalize( hist_base, *hist, 0, 1, NORM_MINMAX, -1, Mat() );
-	/*int tmp = hist_base.channels();
-	*hist = Mat(1,hist_base.rows * hist_base.cols,hist_base.type());
-	MatIterator_<float> pI = hist_base.begin<float>(), pO = hist->begin<float>(), pEnd = hist_base.end<float>();
-	while(pI != pEnd) {
-	*pO++ = *pI++;
-	}*/	
+void GetHistograms(HistInfo &histInfo, vector<Mat> &projections, Mat &labels, int num, vector<Mat> &hist) {
+	vector<Mat>::const_iterator p = projections.begin();
+	hist.resize(num);
+	int *pL = (int *)labels.data;
+	int last_label = 0;
+	for(int i = 0; i < num; i++)
+		hist[i] = Mat::zeros(1,histInfo.bins,CV_64F);
+	while(p != projections.end()) {
+		Mat tmp;
+		CalcHist(*p,histInfo,&tmp);
+		hist[*pL] += tmp;
+		++p; ++pL;
+	}
+	for(int i = 0; i < num; i++)
+		normalize( hist[i], hist[i], 0, 1, NORM_MINMAX, -1, Mat() );
+}
+
+void PrintHist(HistInfo &histInfo, vector<Mat> &hist) {
+	for(int j = 0; j < hist.size(); j++) {
+		printf("%d: ",j);
+		for(int i = 0; i < histInfo.bins; i++) {
+			printf("%e, ", hist[j].at<double>(i));
+		}
+		printf("\n");
+	}
 }
 
 inline string categorizer::remove_extension(string full) {
@@ -334,29 +344,43 @@ inline void categorizer::predictSVM(Mat &input, int &predictedLabel) {
 	}
 }
 
+void GetMinAndMax(vector<Mat> &projections, double &min, double &max, double &mean) {
+	mean = 0;
+	min = max = projections[0].at<double>(0);
+	vector<Mat>::const_iterator p = projections.begin();
+	int size = projections.size();
+	while(p != projections.end()) {
+		double *data = (double *)p->data, *end = data + size;
+		while(data != end) {
+			if(*data < min)
+				min = *data;
+			else if(*data > max)
+				max = *data;
+			mean += *data;
+			++data;
+		}
+		++p;
+	}
+	mean /= (size * size);
+}
+
 void categorizer::categorize() {
 	int height = images[0].rows;
 	int num_labels = category_names.size();
 	Mat confusion = Mat::zeros(num_labels, num_labels, CV_32S);
 
-	//int num_components = model->getInt("ncomponents");
-	//// Here is how to get the eigenvalues of this Eigenfaces model:
-	//Mat eigenvalues = model->getMat("eigenvalues");
-	//// And we can do the same to display the Eigenvectors (read Eigenfaces):
-	//Mat W = model->getMat("eigenvectors");
-	//// Get the sample mean from the training data
-	//Mat mean = model->getMat("mean");
-	//vector<Mat> projections = model->getMatVector("projections");
-	//Mat model_labels = model->getMat("labels");
+	vector<Mat> hist;
+	GetHistograms(histInfo, model->_projections, model->_labels, model->_num_unique_labels, hist);
+	PrintHist(histInfo,hist);
 
 	/*CalculateMean(projections,model_labels,label_size,mean_weights);
 	CalculateStd(projections,model_labels,label_size,mean_weights,std_weights);
 	SaveStats(mean_weights, std_weights, vocab_folder);*/
 
-	DisplayStuff(model->_mean, model->_eigenvalues, model->_eigenvectors, height, vocab_folder);
+	//DisplayStuff(model->_mean, model->_eigenvalues, model->_eigenvectors, height, vocab_folder);
 
 	//imshow("frame", frame);
-	waitKey();
+	//waitKey();
 
 	/*FILE *fp;
 	fopen_s(&fp, string(vocab_folder + "weights.txt").c_str(), "w");
@@ -374,6 +398,11 @@ void categorizer::categorize() {
 		double distance = 0.0;
 		//model->predict(frame, predictedLabel, distance);
 		model->predictKNN(frame,predictedLabel,5);
+		/*EigenDecisionTree decision, decision2;
+		model->predictMeanofDist(frame,decision);
+		model->predictDistofMean(frame,decision2);
+		decision *= decision2;
+		predictedLabel = decision.GetBestVote();*/
 		//predictSVM(frame,predictedLabel);
 
 		//cout << "Predicted as: " << predictedLabel << " with confidence: " << confidence << endl;

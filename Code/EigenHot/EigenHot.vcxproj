@@ -148,6 +148,7 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DecisionTree.h" />
     <ClInclude Include="Eigenfaces.h" />
     <ClInclude Include="EigenHot.h" />
     <ClInclude Include="Resource.h" />

@@ -11,6 +11,7 @@
 #include <limits>
 #include <opencv2/core/internal.hpp>
 #include <opencv2/contrib/contrib.hpp>
+#include "DecisionTree.h"
 //#include "precomp.hpp"
 
 using namespace cv;
@@ -53,12 +54,6 @@ public:
     // in labels.
     void train(InputArrayOfArrays src, InputArray labels);
 
-    // Predicts the label of a query image in src.
-    int predict(InputArray src) const;
-
-    // Predicts the label and confidence for a given sample.
-    void predict(InputArray _src, int &label, double &dist) const;
-
     // See FaceRecognizer::load.
     void load(const FileStorage& fs);
 	void loadBinary(string filename);
@@ -72,10 +67,16 @@ public:
 	void CalcWeights(InputArray _src, Mat &weights) const;
 	inline void CalculateMean(int *label_size, Mat &mean_weights);
 	inline void CalculateStd(int *label_size, Mat &mean_weights, Mat &std_weights);
-	void predictKNN(Mat &input, int &predictedLabel, int num_neighbors);
 	std::vector<Mat>* getEigenValues() {
 		return &_projections;
 	}
+
+	// Predicts the label and confidence for a given sample.
+    int predict(InputArray src) const;
+    void predict(InputArray _src, int &label, double &dist) const;
+	void predictKNN(Mat &input, int &predictedLabel, int num_neighbors);
+	void predictMeanofDist(Mat &input, EigenDecisionTree &prediction);
+	void predictDistofMean(Mat &input, EigenDecisionTree &prediction);
 };
 
 //Ptr<FaceRecognizer> createEigenFaceOpenRecognizer(int num_unique_labels, int num_components, double threshold)
@@ -87,13 +88,3 @@ public:
 //{
 //    return new EigenfacesOpen(num_unique_labels, 0, DBL_MAX);
 //}
-
-class labeled_dist {
-public:
-	int label;
-	double dist;
-
-	bool operator<(labeled_dist &other) {
-		return (dist < other.dist);
-	}
-};
