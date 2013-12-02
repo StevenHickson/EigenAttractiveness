@@ -124,6 +124,33 @@ void PrintHist(HistInfo &histInfo, vector<Mat> &hist) {
 	}
 }
 
+void DisplayHist(HistInfo &histInfo, vector<Mat> &hist) {
+	//for displaying the histogram
+	double maxVal=0;
+	for(int i = 0; i < hist.size(); i++) {
+		double tmp;
+		minMaxLoc(hist[i], 0, &tmp, 0, 0);
+		if(tmp > maxVal)
+			maxVal = tmp;
+	}
+	for(int i = 0; i < hist.size(); i++) {
+		Mat histImg = Mat::zeros( 500,  histInfo.bins*10, CV_8UC3);
+		for(int h = 0; h < histInfo.bins; h++) {
+			float binVal = hist[i].at<double>(0, h);
+			int val = cvRound(binVal*500/maxVal);
+			rectangle( histImg, Point(h*10, 0),
+				Point( (h+1)*10 - 1, val),
+				Scalar::all(128),
+				CV_FILLED );
+		}
+		char buff[50];
+		sprintf(buff,"Hist %d",i);
+		namedWindow(buff, 1);
+		imshow(buff, histImg);
+	}
+	cvWaitKey();
+}
+
 inline string categorizer::remove_extension(string full) {
 	int last_idx = full.find_last_of(".");
 	string name = full.substr(0, last_idx);
@@ -372,6 +399,7 @@ void categorizer::categorize() {
 	vector<Mat> hist;
 	GetHistograms(histInfo, model->_projections, model->_labels, model->_num_unique_labels, hist);
 	PrintHist(histInfo,hist);
+	DisplayHist(histInfo,hist);
 
 	/*CalculateMean(projections,model_labels,label_size,mean_weights);
 	CalculateStd(projections,model_labels,label_size,mean_weights,std_weights);
