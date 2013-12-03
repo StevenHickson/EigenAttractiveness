@@ -13,17 +13,6 @@ using namespace cv;
 using namespace std;
 using namespace boost::filesystem;
 
-static class HistInfo {
-public:
-	/// Using 30 bins for hue and 32 for saturation
-	static const int bins = 100; 
-	double ranges[2];
-
-	HistInfo() {
-		ranges[0] = -8000; ranges[1] = 9000;
-	}
-};
-
 class categorizer {
 private:
 	map<string, Mat> objects, positive_data, negative_data; //maps from category names to data
@@ -53,3 +42,5 @@ public:
 	void categorize(); //function to perform real-time object categorization on saved frames
 	inline void predictSVM(Mat &input, int &predictedLabel);
 };
+
+#define NUM_K 100

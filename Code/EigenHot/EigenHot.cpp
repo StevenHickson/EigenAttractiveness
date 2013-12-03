@@ -80,45 +80,11 @@ inline static Mat norm_0_255(InputArray _src) {
 	return dst;
 }
 
-inline void CalcHist(const Mat &in, HistInfo &histInfo, Mat *hist) {
-	Mat hist_base;
-	hist_base = Mat::zeros(1,histInfo.bins,CV_64F);
-	double *data = (double *)in.data, *end = data + in.cols;
-	double mul = histInfo.bins / (histInfo.ranges[1] - histInfo.ranges[0]);
-	while(data != end) {
-		int loc = int((*data - histInfo.ranges[0]) * mul);
-		if(loc < 0)
-			loc = 0;
-		if(loc >= histInfo.bins)
-			loc = histInfo.bins - 1;
-		hist_base.at<double>(0,loc)++;
-		++data;
-	}
-	normalize( hist_base, *hist, 0, 1, NORM_MINMAX, -1, Mat() );
-}
-
-void GetHistograms(HistInfo &histInfo, vector<Mat> &projections, Mat &labels, int num, vector<Mat> &hist) {
-	vector<Mat>::const_iterator p = projections.begin();
-	hist.resize(num);
-	int *pL = (int *)labels.data;
-	int last_label = 0;
-	for(int i = 0; i < num; i++)
-		hist[i] = Mat::zeros(1,histInfo.bins,CV_64F);
-	while(p != projections.end()) {
-		Mat tmp;
-		CalcHist(*p,histInfo,&tmp);
-		hist[*pL] += tmp;
-		++p; ++pL;
-	}
-	for(int i = 0; i < num; i++)
-		normalize( hist[i], hist[i], 0, 1, NORM_MINMAX, -1, Mat() );
-}
-
 void PrintHist(HistInfo &histInfo, vector<Mat> &hist) {
 	for(int j = 0; j < hist.size(); j++) {
 		printf("%d: ",j);
 		for(int i = 0; i < histInfo.bins; i++) {
-			printf("%e, ", hist[j].at<double>(i));
+			printf("%f, ", hist[j].at<float>(i));
 		}
 		printf("\n");
 	}
@@ -138,6 +104,7 @@ void DisplayHist(HistInfo &histInfo, vector<Mat> &hist) {
 		for(int h = 0; h < histInfo.bins; h++) {
 			float binVal = hist[i].at<double>(0, h);
 			int val = cvRound(binVal*500/maxVal);
+			if(val != 0)
 			rectangle( histImg, Point(h*10, 0),
 				Point( (h+1)*10 - 1, val),
 				Scalar::all(128),
@@ -396,10 +363,10 @@ void categorizer::categorize() {
 	int num_labels = category_names.size();
 	Mat confusion = Mat::zeros(num_labels, num_labels, CV_32S);
 
-	vector<Mat> hist;
-	GetHistograms(histInfo, model->_projections, model->_labels, model->_num_unique_labels, hist);
+	/*vector<Mat> hist;
+	model->GetHistograms(histInfo,hist);
 	PrintHist(histInfo,hist);
-	DisplayHist(histInfo,hist);
+	DisplayHist(histInfo,hist);*/
 
 	/*CalculateMean(projections,model_labels,label_size,mean_weights);
 	CalculateStd(projections,model_labels,label_size,mean_weights,std_weights);
@@ -420,18 +387,38 @@ void categorizer::categorize() {
 		Mat frame;
 		// Prepend full path to the file name so we can imread() it
 		string filename = string(test_folder) + i->path().filename().string();
-		cout << "Opening file: " << filename << endl;
+		//cout << "Opening file: " << filename << endl;
 		frame = imread(filename,0);
+		EigenDecisionTree decision, decision2, decision3;
 		int predictedLabel = -1;
 		double distance = 0.0;
 		//model->predict(frame, predictedLabel, distance);
-		model->predictKNN(frame,predictedLabel,5);
-		/*EigenDecisionTree decision, decision2;
-		model->predictMeanofDist(frame,decision);
+		//model->predictKNN(frame,predictedLabel,5);
+		/*if(predictedLabel < 3)
+			predictedLabel = 0;
+		else if(predictedLabel >= 3)
+			predictedLabel = 1;*/
+		/*if(predictedLabel == 2)
+			predictedLabel = 1;
+		else if(predictedLabel == 1) {
+			predictedLabel = 3;
+		}*/
+		model->predictKNN(frame,decision,4);
 		model->predictDistofMean(frame,decision2);
-		decision *= decision2;
-		predictedLabel = decision.GetBestVote();*/
+		model->predictMeanofDist(frame,decision3);
+		//decision *= decision2;
+		//decision *= decision3;
+		int l1 = decision.GetBottomVote();
+		int l2 = decision2.GetBottomVote();
+		int l3 = decision3.GetBottomVote();
+		if(l2 == l3)
+			predictedLabel = l2;
+		else
+			predictedLabel = l1;
+		//predictedLabel = decision.GetBottomVote();
 		//predictSVM(frame,predictedLabel);
+		/*model->predictHist(frame,histInfo,hist,decision);
+		predictedLabel = decision.GetBottomVote();*/
 
 		//cout << "Predicted as: " << predictedLabel << " with confidence: " << confidence << endl;
 		int label = get_label(filename);
@@ -447,3 +434,49 @@ void categorizer::categorize() {
 	}
 	//waitKey();
 }
+
+ /* void categorizer::categorize() {
+	int height = images[0].rows;
+	int num_labels = category_names.size();
+	vector<Mat> confusionVector;
+	confusionVector.resize(NUM_K);
+	int k;
+	for(k = 0; k < NUM_K; k++)
+		confusionVector[k] = Mat::zeros(num_labels, num_labels, CV_32S);
+
+	int count = 0;
+	int old_label = 0;
+	double max = 0;
+	int label = 0;
+	for(directory_iterator i(test_folder), end_iter; i != end_iter; i++) {
+		Mat frame;
+		// Prepend full path to the file name so we can imread() it
+		string filename = string(test_folder) + i->path().filename().string();
+		//cout << "Opening file: " << filename << endl;
+		frame = imread(filename,0);
+		EigenDecisionTree decision, decision2;
+		int predictedLabel = -1;
+		double distance = 0.0;
+		int label = get_label(filename);
+		for(k = 1; k < NUM_K; k++) {
+			model->predictKNN(frame,decision,k);
+			predictedLabel = decision.GetBottomVote();
+			confusionVector[k].at<int>(label,predictedLabel)++;
+		}
+	}
+	for(k = 1; k < NUM_K; k++) {
+		double stuff = 0;
+		for(int y = 0; y < confusionVector[k].rows; y++) {
+			stuff += confusionVector[k].at<int>(y,y);
+		}
+		if(stuff > max) {
+			max = stuff;
+			label = k;
+		}
+		cout << stuff << endl;
+	}
+	//fclose(fp);
+	//imshow("confusion", confusion);
+	cout << label << endl;
+	//waitKey();
+} */

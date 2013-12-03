@@ -287,6 +287,40 @@ inline void CheckErrors(InputArray &src, vector<Mat> _projections, Mat _eigenvec
 	}
 }
 
+inline void CalcHist(const Mat &in, HistInfo &histInfo, Mat *hist) {
+	Mat hist_base;
+	hist_base = Mat::zeros(1,histInfo.bins,CV_32F);
+	float *data = (float *)in.data, *end = data + in.cols;
+	float mul = histInfo.bins / (histInfo.ranges[1] - histInfo.ranges[0]);
+	while(data != end) {
+		int loc = int((*data - histInfo.ranges[0]) * mul);
+		if(loc < 0)
+			loc = 0;
+		if(loc >= histInfo.bins)
+			loc = histInfo.bins - 1;
+		hist_base.at<float>(0,loc)++;
+		++data;
+	}
+	normalize( hist_base, *hist, 0, 1, NORM_MINMAX, -1, Mat() );
+}
+
+void EigenfacesOpen::GetHistograms(HistInfo &histInfo, vector<Mat> &hist) {
+	vector<Mat>::const_iterator p = _projections.begin();
+	hist.resize(_num_unique_labels);
+	int *pL = (int *)_labels.data;
+	int last_label = 0;
+	for(int i = 0; i < _num_unique_labels; i++)
+		hist[i] = Mat::zeros(1,histInfo.bins,CV_32F);
+	while(p != _projections.end()) {
+		Mat tmp;
+		CalcHist(*p,histInfo,&tmp);
+		hist[*pL] += tmp;
+		++p; ++pL;
+	}
+	for(int i = 0; i < _num_unique_labels; i++)
+		normalize( hist[i], hist[i], 0, 1, NORM_MINMAX, -1, Mat() );
+}
+
 inline double EigenNorm(const Mat &src1, const Mat &src2) {
 	Mat in1 = Mat(1,20,src1.type());
 	Mat in2 = Mat(1,20,src2.type());
@@ -307,7 +341,7 @@ void EigenfacesOpen::predict(InputArray _src, int &minClass, double &minDist) co
 	minDist = DBL_MAX;
 	minClass = -1;
 	for(size_t sampleIdx = 0; sampleIdx < _projections.size(); sampleIdx++) {
-		double dist = EigenNorm(_projections[sampleIdx], q);
+		double dist = norm(_projections[sampleIdx], q, NORM_L2);
 		if((dist < minDist) && (dist < _threshold)) {
 			minDist = dist;
 			minClass = _labels.at<int>((int)sampleIdx);
@@ -348,6 +382,58 @@ void EigenfacesOpen::predictKNN(Mat &input, int &predictedLabel, int num_neighbo
 	}
 }
 
+void EigenfacesOpen::predictKNN(Mat &input, EigenDecisionTree &prediction, int num_neighbors) {
+	CheckErrors(input,_projections,_eigenvectors);
+	// project into PCA subspace
+	vector<Vote> dist;
+	dist.resize(_projections.size());
+	Mat q = subspaceProject(_eigenvectors, _mean, input.reshape(1,1));
+	vector<Vote>::iterator pD = dist.begin();
+	vector<Mat>::const_iterator pP = _projections.begin();
+	int *pL = (int *)_labels.data;
+	_count_labels.resize(_num_unique_labels);
+	int i;
+	for(int k = 0; k < _num_unique_labels; k++)
+		_count_labels[k] = 0;
+	for(size_t sampleIdx = 0; sampleIdx < _projections.size(); sampleIdx++) {
+		pD->dist = norm(*pP, q, NORM_L2);
+		pD->label = *pL;
+		_count_labels[*pL]++;
+		++pD; ++pP; ++pL;
+	}
+	//sort the results
+	std::sort(dist.begin(),dist.end());
+	//count up the votes
+	vector<int> votes;
+	votes.resize(_num_unique_labels);
+	for(i = 0; i < num_neighbors; i++) {
+		votes[dist[i].label]++;
+	}
+	//int max = votes[0];
+	for(i = 0; i < _num_unique_labels; i++) {
+		prediction.bottom[i].label = i;
+		if(votes[i] == 0)
+			prediction.bottom[i].dist = 2;
+		else
+			prediction.bottom[i].dist = 1.0f / votes[i];
+		//prediction.bottom[i].dist *= double(_count_labels[i]) / double(_projections.size());
+	}
+	prediction.FillTiersBasedOnBottom();
+}
+
+void EigenfacesOpen::predictHist(Mat &input, HistInfo &histInfo, vector<Mat> &histComp, EigenDecisionTree &decision) {
+	Mat q = subspaceProject(_eigenvectors, _mean, input.reshape(1,1));
+	Mat hist = Mat::zeros(1,histInfo.bins,CV_32F);
+	CalcHist(q,histInfo,&hist);
+	int type = hist.type();
+	for(int i = 0; i < histComp.size(); i++) {
+		int type2 = histComp[i].type();
+		decision.bottom[i].dist = compareHist(hist,histComp[i],CV_COMP_BHATTACHARYYA );
+		decision.bottom[i].label = i;
+	}
+	decision.FillTiersBasedOnBottom();
+}
+
 void EigenfacesOpen::predictMeanofDist(Mat &input, EigenDecisionTree &prediction) {
 	CheckErrors(input,_projections,_eigenvectors);
 	// project into PCA subspace
@@ -375,7 +461,7 @@ void EigenfacesOpen::predictMeanofDist(Mat &input, EigenDecisionTree &prediction
 	}
 	pD->dist /= count;
 	last_label = 4;
-	for(int i = 0; i < 5; i++) {
+	for(int i = 0; i < NUM_CLASSES; i++) {
 		prediction.bottom[i] = dist[i];
 	}
 	prediction.FillTiersBasedOnBottom();
@@ -408,9 +494,9 @@ void EigenfacesOpen::predictDistofMean(Mat &input, EigenDecisionTree &prediction
 		++pP; ++pL; ++count;
 	}
 	mean /= count;
-	pD->dist = EigenNorm(mean, q);
+	pD->dist = norm(mean, q, NORM_L2);
 	last_label = 4;
-	for(int i = 0; i < 5; i++) {
+	for(int i = 0; i < NUM_CLASSES; i++) {
 		prediction.bottom[i] = dist[i];
 	}
 	prediction.FillTiersBasedOnBottom();

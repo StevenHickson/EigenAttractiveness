@@ -16,6 +16,18 @@
 
 using namespace cv;
 
+
+static class HistInfo {
+public:
+	/// Using 30 bins for hue and 32 for saturation
+	static const int bins = 100; 
+	double ranges[2];
+
+	HistInfo() {
+		ranges[0] = -8000; ranges[1] = 9000;
+	}
+};
+
 class EigenfacesOpen : public FaceRecognizer
 {
 private:
@@ -29,6 +41,7 @@ public:
     Mat _eigenvectors;
     Mat _eigenvalues;
     Mat _mean;
+	vector<int> _count_labels;
 
 
     using FaceRecognizer::save;
@@ -70,11 +83,14 @@ public:
 	std::vector<Mat>* getEigenValues() {
 		return &_projections;
 	}
+	void GetHistograms(HistInfo &histInfo, vector<Mat> &hist);
+	void predictHist(Mat &input, HistInfo &histInfo, vector<Mat> &histComp, EigenDecisionTree &decision);
 
 	// Predicts the label and confidence for a given sample.
     int predict(InputArray src) const;
     void predict(InputArray _src, int &label, double &dist) const;
 	void predictKNN(Mat &input, int &predictedLabel, int num_neighbors);
+	void predictKNN(Mat &input, EigenDecisionTree &prediction, int num_neighbors);
 	void predictMeanofDist(Mat &input, EigenDecisionTree &prediction);
 	void predictDistofMean(Mat &input, EigenDecisionTree &prediction);
 };
