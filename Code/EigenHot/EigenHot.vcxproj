@@ -156,8 +156,12 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="DisplayHoG.cpp" />
     <ClCompile Include="Eigenfaces.cpp" />
     <ClCompile Include="EigenHot.cpp" />
+    <ClCompile Include="FindFace.cpp" />
+    <ClCompile Include="funnelReal.cpp" />
+    <ClCompile Include="GetFaceSize.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

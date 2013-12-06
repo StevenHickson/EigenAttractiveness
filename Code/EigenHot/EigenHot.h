@@ -13,6 +13,10 @@ using namespace cv;
 using namespace std;
 using namespace boost::filesystem;
 
+Mat VisualizeHoG(Mat& origImg, vector<float>& descriptorValues);
+int AlignImage(Mat &in, Mat &out);
+int FindFace(Mat &in, Mat &out);
+
 class categorizer {
 private:
 	map<string, Mat> objects, positive_data, negative_data; //maps from category names to data
@@ -28,6 +32,7 @@ private:
 
 	EigenfacesOpen *model;
 	HistInfo histInfo;
+	Ptr<HOGDescriptor> hogDescriptor;
 
 	void make_train_set(); //function to build the training set multimap
 	void make_pos_neg(); //function to extract BOW features from training images and organize them into positive and negative samples 
@@ -40,7 +45,15 @@ public:
 	void train_classifiers(); //function to train the one-vs-all SVM classifiers for all categories
 	void categorize(VideoCapture); //function to perform real-time object categorization on camera frames
 	void categorize(); //function to perform real-time object categorization on saved frames
+	void categorize(Mat &in);
 	inline void predictSVM(Mat &input, int &predictedLabel);
+	void trainskin(vector<int> &skin);
+	void trainhog(vector<vector<float>> &descriptors);
+	void trainhog2(vector<vector<float>> &descriptors);
+	int testhogknn(Mat &img, vector<vector<float>> &descriptors, int num_neighbors);
 };
 
 #define NUM_K 100
+#define TRAIN_DB "C:/Users/Steve/Documents/Data/EigenHot/people.train"
+#define FACE_XML "C:/opencv/data/haarcascades/haarcascade_frontalface_default.xml"
+#define EYE_XML "C:/opencv/data/haarcascades/haarcascade_eye.xml"

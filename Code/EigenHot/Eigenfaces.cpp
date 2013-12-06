@@ -322,10 +322,10 @@ void EigenfacesOpen::GetHistograms(HistInfo &histInfo, vector<Mat> &hist) {
 }
 
 inline double EigenNorm(const Mat &src1, const Mat &src2) {
-	Mat in1 = Mat(1,20,src1.type());
-	Mat in2 = Mat(1,20,src2.type());
-	const int corr[20] = {4,8,9,10,11,19,37,48,51,63,66,77,78,86,142,152,189,292,778,1388};
-	for(int i = 0; i < 20; i++) {
+	Mat in1 = Mat(1,18,src1.type());
+	Mat in2 = Mat(1,18,src2.type());
+	const int corr[18] = {4,8,9,10,11,19,37,48,51,63,66,77,78,86,142,152,189,292};
+	for(int i = 0; i < 18; i++) {
 		in1.at<double>(0,i) = src1.at<double>(0,corr[i]);
 		in2.at<double>(0,i) = src2.at<double>(0,corr[i]);
 	}

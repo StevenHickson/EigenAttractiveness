@@ -35,17 +35,42 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			// TODO: code your application's behavior here.
 			try {
 				// Number of clusters for building BOW vocabulary from SURF features
-				categorizer c(argv[1]);
-				if(atoi(argv[2]) == 0) {
-					c.train_classifiers();
-					c.save_vocab();
+				if(argc == 4) {
+					Mat out, face, in = imread(argv[2]);
+					if(!FindFace(in,face)) 
+						cout << "Error couldn't find face";
+					else {
+						resize(face,face,Size(86,86));
+						AlignImage(face,out);
+						imshow("in",in);
+						imshow("face",face);
+						imshow("out",out);
+						waitKey();
+						waitKey();
+						categorizer c(argv[1]);
+						if(atoi(argv[3]) == 0) {
+							c.train_classifiers();
+							c.save_vocab();
+						} else {
+							cout << "loading vocab" << endl;
+							c.load_vocab();
+							cout << "vocab loaded" << endl;
+						}
+						c.categorize(out);
+					}
 				} else {
-					cout << "loading vocab" << endl;
-					c.load_vocab();
-					cout << "vocab loaded" << endl;
-				}
+					categorizer c(argv[1]);
+					if(atoi(argv[2]) == 0) {
+						c.train_classifiers();
+						c.save_vocab();
+					} else {
+						cout << "loading vocab" << endl;
+						c.load_vocab();
+						cout << "vocab loaded" << endl;
+					}
 
-				c.categorize();
+					c.categorize();
+				}
 			} catch(cv::Exception &e) {
 				printf("Error: %s\n", e.what());
 			}
@@ -105,7 +130,7 @@ void DisplayHist(HistInfo &histInfo, vector<Mat> &hist) {
 			float binVal = hist[i].at<double>(0, h);
 			int val = cvRound(binVal*500/maxVal);
 			if(val != 0)
-			rectangle( histImg, Point(h*10, 0),
+				rectangle( histImg, Point(h*10, 0),
 				Point( (h+1)*10 - 1, val),
 				Scalar::all(128),
 				CV_FILLED );
@@ -142,6 +167,8 @@ categorizer::categorizer(string direc) {
 	make_train_set();
 	// Initialize pointers to all the eigen stuff
 	model = new EigenfacesOpen(category_names.size());
+	hogDescriptor = new HOGDescriptor(cv::Size(128,128),cv::Size(16,16),cv::Size(8,8),cv::Size(8,8),9);
+	//hogDescriptor = new HOGDescriptor();
 	//model = createFisherFaceRecognizer();
 }
 
@@ -159,10 +186,12 @@ void categorizer::make_train_set() {
 		else {
 			// File name with path
 			string filename = string(train_folder) + category + string("/") + (i->path()).filename().string();
-			Mat img = imread(filename,0);
+			Mat img = imread(filename);
+			Mat img_g;
+			cvtColor(img, img_g, CV_BGR2GRAY);
 			pair<string, Mat> p(category, img);
 			train_set.insert(p);
-			images.push_back(img);
+			images.push_back(img_g);
 			labels.push_back(atoi(category.c_str()));
 		}
 	}
@@ -257,22 +286,23 @@ inline void DisplayStuff(Mat mean, Mat eigenvalues, Mat W, int height, string fo
 	imshow("mean", norm_0_255(mean.reshape(1, height)));
 	imwrite(folder + "mean.png", norm_0_255(mean.reshape(1, height)));
 	// Display or save the Eigenfaces:
+	const int corr[20] = {4,8,9,10,11,19,37,48,51,63,66,77,78,86,142,152,189,292,778,1388};
 	for (int i = 0; i < min(20, W.cols); i++) {
-		string msg = format("Eigenvalue #%d = %.5f", i, eigenvalues.at<double>(i));
+		string msg = format("Eigenvalue #%d = %.5f", i, eigenvalues.at<double>(corr[i]));
 		cout << msg << endl;
 		// get eigenvector #i
-		Mat ev = W.col(i).clone();
+		Mat ev = W.col(corr[i]).clone();
 		// Reshape to original size & normalize to [0...255] for imshow.
 		Mat grayscale = norm_0_255(ev.reshape(1, height));
 		// Show the image & apply a Jet colormap for better sensing.
-		Mat cgrayscale;
-		applyColorMap(grayscale, cgrayscale, COLORMAP_JET);
+		//Mat cgrayscale;
+		//applyColorMap(grayscale, cgrayscale, COLORMAP_JET);
 		// Display 
 
-		/*char img_file[400];
-		sprintf(img_file, "%seigen_face_%d.png", folder.c_str(), i);
-		imwrite(img_file,cgrayscale);*/
-		imshow(format("eigenface_%d", i), cgrayscale);
+		char img_file[400];
+		sprintf(img_file, "%seigen_face_%d.png", folder.c_str(), corr[i]);
+		imwrite(img_file,grayscale);
+		imshow(format("eigenface_%d", corr[i]), grayscale);
 	}
 }
 
@@ -358,6 +388,221 @@ void GetMinAndMax(vector<Mat> &projections, double &min, double &max, double &me
 	mean /= (size * size);
 }
 
+void categorizer::trainskin(vector<int> &skin) {
+	vector<int> count;
+	skin.resize(category_names.size());
+	count.resize(category_names.size());
+	int k;
+	for(k = 0; k < skin.size(); k++) {
+		skin[k] = 0;
+		count[k] = 0;
+	}
+	for(multimap<string, Mat>::iterator i = train_set.begin(); i != train_set.end(); i++) {
+		// Category name is the first element of each entry in train_set
+		string category = i->first;
+		// Training image is the second elemnt
+		Mat im = i->second;
+		int num = GetFaceSize(im);
+		if(num > 3500 && num < 6500) {
+			int cat = atoi(category.c_str());
+			skin[cat] += num;
+			count[cat]++;
+		}
+	}
+	for(k = 0; k < skin.size(); k++) {
+		skin[k] /= count[k];
+	}
+}
+
+inline void PrepImgForHog(const Mat &in, Mat &out) {
+	out = in;
+	resize(out,out,Size(128,128));
+}
+
+inline void Add(vector<float> &d1, vector<float> &d2) {
+	if(d1.empty()) {
+		d1.resize(d2.size());
+		vector<float>::iterator p1 = d1.begin(), p2 = d2.begin();
+		while(p1 != d1.end()) {
+			*p1++ = *p2++;
+		}
+	} else {
+		vector<float>::iterator p1 = d1.begin(), p2 = d2.begin();
+		while(p1 != d1.end()) {
+			*p1 += *p2;
+			++p1; ++p2;
+		}
+	}
+}
+
+inline void Divide(vector<float> &d, float count) {
+	vector<float>::iterator p1 = d.begin();
+	while(p1 != d.end()) {
+		*p1 /= count;
+		++p1;
+	}
+}
+
+inline void Diff(vector<float> &d1, vector<float> &d2, vector<float> &out) {
+	out.resize(d1.size());
+	vector<float>::iterator p1 = d1.begin(), p2 = d2.begin(), pO = out.begin();
+	while(p1 != d1.end()) {
+		*pO = *p1 - *p2;
+		++p1; ++p2; ++pO;
+	}
+}
+
+float Diff(vector<float> &d1, vector<float> &d2) {
+	float out = 0;
+	vector<float>::iterator p1 = d1.begin(), p2 = d2.begin();
+	while(p1 != d1.end()) {
+		out += abs(*p1 - *p2);
+		++p1; ++p2;
+	}
+	return out;
+}
+
+inline void print(vector<float> &in) {
+	vector<float>::iterator p1 = in.begin();
+	while(p1 != in.end()) {
+		cout << *p1 << ",";
+		++p1;
+	}
+	cout << endl;
+}
+
+inline void normalize(vector<float> &in) {
+	vector<float>::iterator p1 = in.begin();
+	float max = *p1++;
+	while(p1 != in.end()) {
+		if(*p1 > max)
+			max = *p1;
+		++p1;
+	}
+	p1 = in.begin();
+	while(p1 != in.end()) {
+		*p1 /= max;
+		++p1;
+	}
+}
+
+void categorizer::trainhog(vector<vector<float>> &descriptors) {
+	descriptors.resize(category_names.size());
+	vector<int> count;
+	count.resize(category_names.size());
+	int k;
+	for(k = 0; k < count.size(); k++) {
+		count[k] = 0;
+	}
+	for(multimap<string, Mat>::iterator i = train_set.begin(); i != train_set.end(); i++) {
+		// Category name is the first element of each entry in train_set
+		string category = i->first;
+		// Training image is the second elemnt
+		Mat im = i->second;
+
+		Mat frame_g, frame_hog;
+		vector<float> tmp_desc;
+		cvtColor(im,frame_g,CV_BGR2GRAY);
+		PrepImgForHog(frame_g,frame_hog);
+		hogDescriptor->compute(frame_hog, tmp_desc);
+		/*Mat output = VisualizeHoG(frame_hog,descriptors);
+		imshow("hog",output);
+		waitKey();*/
+
+		int cat = atoi(category.c_str());
+		Add(descriptors[cat],tmp_desc);
+		count[cat]++;
+	}
+	int height = images[0].rows;
+	Mat disp = norm_0_255(model->_mean.reshape(1, height));
+	for(k = 0; k < descriptors.size(); k++) {
+		Divide(descriptors[k],float(count[k]));
+		//Mat output = VisualizeHoG(disp,descriptors[k]);
+		//imwrite("C:/Users/Steve/Documents/GitHub/FishClassification/Paper/hog_desc.png",output);
+		//imshow("hog",descriptors[k]);
+	}
+	//waitKey();
+}
+
+void categorizer::trainhog2(vector<vector<float>> &descriptors) {
+	descriptors.resize(train_set.size());
+	vector<vector<float>>::iterator p = descriptors.begin();
+	for(multimap<string, Mat>::iterator i = train_set.begin(); i != train_set.end(); i++, p++) {
+		// Category name is the first element of each entry in train_set
+		string category = i->first;
+		// Training image is the second elemnt
+		Mat im = i->second;
+
+		Mat frame_g, frame_hog;
+		vector<float> tmp_desc;
+		cvtColor(im,frame_g,CV_BGR2GRAY);
+		PrepImgForHog(frame_g,frame_hog);
+		hogDescriptor->compute(frame_hog, *p);
+	}
+}
+
+int categorizer::testhogknn(Mat &img, vector<vector<float>> &descriptors, int num_neighbors) {
+	int predictedLabel;
+	Mat frame_hog;
+	vector<float> current;
+	PrepImgForHog(img,frame_hog);
+	hogDescriptor->compute(frame_hog, current);
+	vector<Vote> dist;
+	dist.resize(descriptors.size());
+	vector<Vote>::iterator pD = dist.begin();
+	vector<vector<float>>::iterator pH = descriptors.begin();
+	int *pL = (int *)model->_labels.data;
+	while(pH != descriptors.end()) {
+		pD->dist = (double)Diff(current,*pH);
+		pD->label = *pL;
+		++pD; ++pH; ++pL;
+	}
+	//sort the results
+	std::sort(dist.begin(),dist.end());
+	//count up the votes
+	vector<int> votes;
+	votes.resize(model->_num_unique_labels);
+	int i;
+	for(i = 0; i < num_neighbors; i++) {
+		votes[dist[i].label]++;
+	}
+	int max = votes[0];
+	predictedLabel = 0;
+	for(i = 0; i < model->_num_unique_labels; i++) {
+		if(votes[i] > max) {
+			max = votes[i];
+			predictedLabel = i;
+		}
+	}
+	return predictedLabel;
+}
+
+void categorizer::categorize(Mat &in) {
+	vector<vector<float>> desc;
+	trainhog(desc);
+	int predictedLabel = -1, predictedLabel2;
+	double distance = 0.0;
+	EigenDecisionTree decision, decision2;
+	Mat in_g;
+	cvtColor(in,in_g,CV_BGR2GRAY);
+
+	Mat frame_hog;
+	PrepImgForHog(in_g,frame_hog);
+	vector<float> descriptors;
+	hogDescriptor->compute(frame_hog, descriptors);
+	float min = -1;
+	for(int k = 0; k < desc.size(); k++) {
+		float tmp = Diff(descriptors,desc[k]);
+		if(tmp < min || k == 0) {
+			min = tmp;
+			predictedLabel = k;
+		}
+	}
+	model->predictKNN(in_g,decision,4);
+	predictedLabel2 = decision.GetBottomVote();
+	cout << "Hog Score: " << predictedLabel << " KNN Score: " << predictedLabel2 << endl;
+}
+
 void categorizer::categorize() {
 	int height = images[0].rows;
 	int num_labels = category_names.size();
@@ -383,39 +628,68 @@ void categorizer::categorize() {
 	throw std::exception("Couldn't open weights.txt");*/
 	int count = 0;
 	int old_label = 0;
+	vector<int> skin;
+	//trainskin(skin);
+	vector<vector<float>> desc;
+	trainhog(desc);
 	for(directory_iterator i(test_folder), end_iter; i != end_iter; i++) {
-		Mat frame;
+		int predictedLabel = -1, predictedLabel2;
+		double distance = 0.0;
+		EigenDecisionTree decision, decision2, decision3, decision4;
+
+		Mat frame, frame_g;
 		// Prepend full path to the file name so we can imread() it
 		string filename = string(test_folder) + i->path().filename().string();
 		//cout << "Opening file: " << filename << endl;
-		frame = imread(filename,0);
-		EigenDecisionTree decision, decision2, decision3;
-		int predictedLabel = -1;
-		double distance = 0.0;
-		//model->predict(frame, predictedLabel, distance);
+		frame = imread(filename);
+		//int num = GetFaceSize(frame);
+		cvtColor(frame,frame_g,CV_BGR2GRAY);
+
+		//predictedLabel = testhogknn(frame_g,desc,5);
+		/*vector<float> descriptors;
+		Mat frame_hog;
+		PrepImgForHog(frame_g,frame_hog);
+		hogDescriptor->compute(frame_hog, descriptors);
+		float min = -1;
+		for(int k = 0; k < desc.size(); k++) {
+		float tmp = Diff(descriptors,desc[k]);
+		if(tmp < min || k == 0) {
+		min = tmp;
+		predictedLabel = k;
+		}
+		decision4.bottom[k].dist = tmp;
+		decision4.bottom[k].label = k;
+		}
+		decision4.Normalize();*/
+
+		model->predictKNN(frame_g,decision,4);
+		//decision += decision4;
+		predictedLabel = decision.GetBottomVote();
+
+		//model->predict(frame_g, predictedLabel, distance);
 		//model->predictKNN(frame,predictedLabel,5);
 		/*if(predictedLabel < 3)
-			predictedLabel = 0;
+		predictedLabel = 0;
 		else if(predictedLabel >= 3)
-			predictedLabel = 1;*/
+		predictedLabel = 1;*/
 		/*if(predictedLabel == 2)
-			predictedLabel = 1;
+		predictedLabel = 1;
 		else if(predictedLabel == 1) {
-			predictedLabel = 3;
+		predictedLabel = 3;
 		}*/
-		model->predictKNN(frame,decision,4);
-		model->predictDistofMean(frame,decision2);
-		model->predictMeanofDist(frame,decision3);
-		//decision *= decision2;
-		//decision *= decision3;
-		int l1 = decision.GetBottomVote();
-		int l2 = decision2.GetBottomVote();
-		int l3 = decision3.GetBottomVote();
-		if(l2 == l3)
-			predictedLabel = l2;
-		else
-			predictedLabel = l1;
-		//predictedLabel = decision.GetBottomVote();
+		/*EigenDecisionTree mul1, mul2, mul3;
+		mul1.SetBottomTier(Vote(0,0.204f),Vote(1,0.399f), Vote(2,0.355f), Vote(3,0.343f));
+		mul2.SetBottomTier(Vote(0,0.393f),Vote(1,0.449f), Vote(2,0.445f), Vote(3,0));
+		mul3.SetBottomTier(Vote(0,0.403f),Vote(1,0.452f), Vote(2,0), Vote(3,0.457f));*/
+
+		/*model->predictKNN(frame_g,decision,4);
+		model->predictDistofMean(frame_g,decision2);
+		model->predictMeanofDist(frame_g,decision3);
+
+		decision *= decision2;
+		decision *= decision3;
+		decision *= decision4;
+		predictedLabel = decision.GetBottomVote();*/
 		//predictSVM(frame,predictedLabel);
 		/*model->predictHist(frame,histInfo,hist,decision);
 		predictedLabel = decision.GetBottomVote();*/
@@ -435,48 +709,48 @@ void categorizer::categorize() {
 	//waitKey();
 }
 
- /* void categorizer::categorize() {
-	int height = images[0].rows;
-	int num_labels = category_names.size();
-	vector<Mat> confusionVector;
-	confusionVector.resize(NUM_K);
-	int k;
-	for(k = 0; k < NUM_K; k++)
-		confusionVector[k] = Mat::zeros(num_labels, num_labels, CV_32S);
+/* void categorizer::categorize() {
+int height = images[0].rows;
+int num_labels = category_names.size();
+vector<Mat> confusionVector;
+confusionVector.resize(NUM_K);
+int k;
+for(k = 0; k < NUM_K; k++)
+confusionVector[k] = Mat::zeros(num_labels, num_labels, CV_32S);
 
-	int count = 0;
-	int old_label = 0;
-	double max = 0;
-	int label = 0;
-	for(directory_iterator i(test_folder), end_iter; i != end_iter; i++) {
-		Mat frame;
-		// Prepend full path to the file name so we can imread() it
-		string filename = string(test_folder) + i->path().filename().string();
-		//cout << "Opening file: " << filename << endl;
-		frame = imread(filename,0);
-		EigenDecisionTree decision, decision2;
-		int predictedLabel = -1;
-		double distance = 0.0;
-		int label = get_label(filename);
-		for(k = 1; k < NUM_K; k++) {
-			model->predictKNN(frame,decision,k);
-			predictedLabel = decision.GetBottomVote();
-			confusionVector[k].at<int>(label,predictedLabel)++;
-		}
-	}
-	for(k = 1; k < NUM_K; k++) {
-		double stuff = 0;
-		for(int y = 0; y < confusionVector[k].rows; y++) {
-			stuff += confusionVector[k].at<int>(y,y);
-		}
-		if(stuff > max) {
-			max = stuff;
-			label = k;
-		}
-		cout << stuff << endl;
-	}
-	//fclose(fp);
-	//imshow("confusion", confusion);
-	cout << label << endl;
-	//waitKey();
+int count = 0;
+int old_label = 0;
+double max = 0;
+int label = 0;
+for(directory_iterator i(test_folder), end_iter; i != end_iter; i++) {
+Mat frame;
+// Prepend full path to the file name so we can imread() it
+string filename = string(test_folder) + i->path().filename().string();
+//cout << "Opening file: " << filename << endl;
+frame = imread(filename,0);
+EigenDecisionTree decision, decision2;
+int predictedLabel = -1;
+double distance = 0.0;
+int label = get_label(filename);
+for(k = 1; k < NUM_K; k++) {
+model->predictKNN(frame,decision,k);
+predictedLabel = decision.GetBottomVote();
+confusionVector[k].at<int>(label,predictedLabel)++;
+}
+}
+for(k = 1; k < NUM_K; k++) {
+double stuff = 0;
+for(int y = 0; y < confusionVector[k].rows; y++) {
+stuff += confusionVector[k].at<int>(y,y);
+}
+if(stuff > max) {
+max = stuff;
+label = k;
+}
+cout << stuff << endl;
+}
+//fclose(fp);
+//imshow("confusion", confusion);
+cout << label << endl;
+//waitKey();
 } */

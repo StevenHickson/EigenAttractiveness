@@ -32,6 +32,12 @@ public:
 				votes[i].dist *= in.votes[i].dist;
 		}
 	}
+	void operator+=(EigenDecisionTree &in) {
+		for(int i = 0; i < NUM_CLASSES + 5; i++) {
+			if(in.votes[i].dist >= 0 && votes[i].dist >= 0)
+				votes[i].dist += in.votes[i].dist;
+		}
+	}
 
 	void SetBottomTier(Vote v0, Vote v1, Vote v2, Vote v3) {
 		bottom[0] = v0; bottom[1] = v1; bottom[2] = v2; bottom[3] = v3; 

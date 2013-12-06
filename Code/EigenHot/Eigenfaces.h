@@ -16,6 +16,7 @@
 
 using namespace cv;
 
+int GetFaceSize(Mat &img);
 
 static class HistInfo {
 public:
