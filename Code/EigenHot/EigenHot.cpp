@@ -36,16 +36,33 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			try {
 				// Number of clusters for building BOW vocabulary from SURF features
 				if(argc == 4) {
-					Mat out, face, in = imread(argv[2]);
-					if(!FindFace(in,face)) 
+					Mat out, aligned, face, flandmark, in = imread(argv[2]);
+					Rect face_rect;
+					if(!FindFace(in,face_rect,face)) 
 						cout << "Error couldn't find face";
 					else {
+						PerformanceTimer time;
 						resize(face,face,Size(86,86));
-						AlignImage(face,out);
+						/*time.Start();
+						AlignFace(face,aligned);
+						time.Stop();
+						cout << "My Alignment: " << time.Duration() << endl;*/
+						
+						time.Start();
+						int ret1 = AlignFLandmark(in,face_rect,flandmark);
+						time.Stop();
+						cout << "Landmark Alignment: " << time.Duration() << endl;
+						
+						/*time.Start();
+						AlignImage(flandmark,out);
+						time.Stop();
+						cout << "LFW Alignment: " << time.Duration() << endl;
+						imshow("out",out);*/
+
 						imshow("in",in);
 						imshow("face",face);
-						imshow("out",out);
-						waitKey();
+						//imshow("features",aligned);
+						imshow("landmarks",flandmark);
 						waitKey();
 						categorizer c(argv[1]);
 						if(atoi(argv[3]) == 0) {
@@ -56,7 +73,10 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 							c.load_vocab();
 							cout << "vocab loaded" << endl;
 						}
-						c.categorize(out);
+						cout << "fast method" << endl;
+						c.categorize(flandmark);
+						/*cout << "slow method" << endl;
+						c.categorize(out);*/
 					}
 				} else {
 					categorizer c(argv[1]);

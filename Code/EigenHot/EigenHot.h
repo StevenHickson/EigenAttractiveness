@@ -8,6 +8,8 @@
 #include <opencv2/ml/ml.hpp>
 #include <boost/filesystem.hpp>
 #include "Eigenfaces.h"
+#include "flandmark_detector.h"
+#include "PerformanceTimer.h"
 
 using namespace cv;
 using namespace std;
@@ -15,7 +17,9 @@ using namespace boost::filesystem;
 
 Mat VisualizeHoG(Mat& origImg, vector<float>& descriptorValues);
 int AlignImage(Mat &in, Mat &out);
-int FindFace(Mat &in, Mat &out);
+int FindFace(Mat &in, Rect &face, Mat &out);
+int AlignFace(Mat &in, Mat &out);
+int AlignFLandmark(Mat &in, Rect &face, Mat &out);
 
 class categorizer {
 private:
@@ -57,3 +61,7 @@ public:
 #define TRAIN_DB "C:/Users/Steve/Documents/Data/EigenHot/people.train"
 #define FACE_XML "C:/opencv/data/haarcascades/haarcascade_frontalface_default.xml"
 #define EYE_XML "C:/opencv/data/haarcascades/haarcascade_eye.xml"
+#define NOSE_XML "C:/opencv/data/haarcascades/haarcascade_mcs_nose.xml"
+#define MOUTH_XML "C:/opencv/data/haarcascades/haarcascade_mcs_mouth.xml"
+#define FLANDMARK_DATA "C:/Users/Steve/Documents/GitHub/EigenAttractiveness/Data/flandmark_model.dat"
+#define ALIGNMENT_DATA { 43, 43, 36, 27, 49, 27, 29, 57, 56, 57, 22, 25, 66, 27, 40, 50 }

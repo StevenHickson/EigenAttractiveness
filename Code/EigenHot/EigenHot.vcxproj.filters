@@ -36,6 +36,18 @@
     <ClInclude Include="DecisionTree.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="flandmark_detector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblbp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="msvc-compat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PerformanceTimer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -57,6 +69,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="FindFace.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="flandmark_detector.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="liblbp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

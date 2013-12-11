@@ -106,7 +106,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>C:\opencv\build\x64\vc11\lib\;C:\blepo\external64\boost\lib\</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_contrib246d.lib;opencv_core246d.lib;opencv_features2d246d.lib;opencv_flann246d.lib;opencv_highgui246d.lib;opencv_ml246d.lib;opencv_imgproc246d.lib;opencv_nonfree246d.lib;opencv_objdetect246d.lib</AdditionalDependencies>
+      <AdditionalDependencies>opencv_contrib246d.lib;opencv_core246d.lib;opencv_features2d246d.lib;opencv_flann246d.lib;opencv_highgui246d.lib;opencv_ml246d.lib;opencv_imgproc246d.lib;opencv_nonfree246d.lib;opencv_objdetect246d.lib;opencv_calib3d246d.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -141,7 +141,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>C:\opencv\build\x64\vc11\lib\;C:\blepo\external64\boost\lib\</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_contrib246.lib;opencv_core246.lib;opencv_features2d246.lib;opencv_flann246.lib;opencv_highgui246.lib;opencv_ml246.lib;opencv_imgproc246.lib;opencv_nonfree246.lib;opencv_objdetect246.lib</AdditionalDependencies>
+      <AdditionalDependencies>opencv_contrib246.lib;opencv_core246.lib;opencv_features2d246.lib;opencv_flann246.lib;opencv_highgui246.lib;opencv_ml246.lib;opencv_imgproc246.lib;opencv_nonfree246.lib;opencv_objdetect246.lib;opencv_calib3d246.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -151,6 +151,10 @@
     <ClInclude Include="DecisionTree.h" />
     <ClInclude Include="Eigenfaces.h" />
     <ClInclude Include="EigenHot.h" />
+    <ClInclude Include="flandmark_detector.h" />
+    <ClInclude Include="liblbp.h" />
+    <ClInclude Include="msvc-compat.h" />
+    <ClInclude Include="PerformanceTimer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
@@ -160,8 +164,10 @@
     <ClCompile Include="Eigenfaces.cpp" />
     <ClCompile Include="EigenHot.cpp" />
     <ClCompile Include="FindFace.cpp" />
+    <ClCompile Include="flandmark_detector.cpp" />
     <ClCompile Include="funnelReal.cpp" />
     <ClCompile Include="GetFaceSize.cpp" />
+    <ClCompile Include="liblbp.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
